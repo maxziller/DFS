@@ -115,9 +115,10 @@ def verificausuario(user):
 Função que insere novo usuário no sistema com sua senha já em hash
 """
 def insereusuario(usuario,senha):
-    arquivo = open(usuarios,'w',encoding='utf8')
+    arquivo = open(usuarios,'a',encoding='utf8')
     arquivo.write(usuario)
     arquivo.write(" ")
+
     arquivo.write(Sha512Hash(senha))
     arquivo.write("\n")
     arquivo.close()
@@ -142,7 +143,7 @@ def verificasenha(user,senha):
 A maior parte dessa função será transferida para o .py Usuário posteriormente, pois o Servidor não precisa de interface
 Mas por enquanto é o que tá tendo
 Depois rearranja
-"""
+""" 
 def login():
     while(1):
         user = input("Usuário: ")

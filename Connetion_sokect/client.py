@@ -1,5 +1,5 @@
 import socket			
-
+import hashlib
 def cria_socket_client():
     host = socket.gethostname()
     port = 5000
@@ -14,12 +14,16 @@ def login(client_socket):
     # Envia username para o servidor
     #data = client_socket.recv(1024).decode()
     username = input("Digite seu username:")
+    while (" " in username):    
+        username = input("Não é permitido o uso de espaços no nome de usuário, digite novamente:")
     client_socket.send(username.encode())
 
     # Envia password para o servidor
     #data = client_socket.recv(1024).decode()
     password = input("Digite sua senha:")
+    password = Sha512Hash(password)
     client_socket.send(password.encode())
+
 
     # Recebe mensagem de login efetuado ou falhou
     data = client_socket.recv(1024).decode()
@@ -40,7 +44,11 @@ def login(client_socket):
     else:
         print(data)
         input("Press any key to exit")
-        client_socket.close()	
+        client_socket.close()
+
+def Sha512Hash(Password):
+    HashedPassword=hashlib.sha512(Password.encode('utf-8')).hexdigest()
+    return(HashedPassword)
 
 cria_socket_client()
 
