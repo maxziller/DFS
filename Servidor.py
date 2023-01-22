@@ -95,7 +95,7 @@ class File:
     """
     def copia(self,usuario):
         i = 2
-        while (os.path.isfile(Files+self.name+"("+str(i)+")"):
+        while (os.path.isfile(Files+self.name+"("+str(i)+")")):
                i += 1
         novonome = Files+self.name+"("+str(i)+")","x"
         novoarquivo = open(novonome,'x')
