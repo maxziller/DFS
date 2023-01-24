@@ -93,15 +93,38 @@ def verificasenha(user,senha):
                 return False
             break
 
+def cls():
+    os.system('cls' if os.name=='nt' else 'clear')
+
 
 def listarArquivos(conn, addr):
+    cls()
     conn.send("Listando arquivos".encode('utf-8'))
+    lista = os.listdir(Files)
+    # criando string da lista com numero para cada arquivo e nome do arquivo
+    for i in range(len(lista)):
+        lista[i] = str(i) + " - " + lista[i]
 
-def enviarArquivo(conn, addr):
-    conn.send("Upload de arquivo".encode('utf-8'))
+    return lista
+
+
+
+def enviarArquivo(conn, addr, numeroArquivo):
+    # selecionar pelo numero do arquivo
+    lista = listarArquivos(conn, addr)
+    nomeArquivo = lista[numeroArquivo].split(" - ")[1]
+    conn.send("Download de arquivo".encode('utf-8'))
+    # envia o arquivo
+    with open(Files + nomeArquivo, 'rb') as f:
+        while True:
+            data = f.read(1024)
+            if not data:
+                break
+            conn.send(data)
+    conn.send("Fim do arquivo".encode('utf-8'))
 
 def receberArquivo(conn, addr):
-    conn.send("Download de arquivo".encode('utf-8'))
+    conn.send("Salvar arquivo".encode('utf-8'))
 
 def deletarArquivo(conn, addr):
     conn.send("Deletar arquivo".encode('utf-8'))

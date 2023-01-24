@@ -51,13 +51,18 @@ def execute_server(conn, addr):
 
 def menu(conn, addr):
     while True:
-        conn.send('1 - Listar arquivos\n2 - Enviar arquivo\n3 - Receber arquivo\n4 - Deletar arquivo\n5 - Sair\n'.encode())
+        conn.send('\n1 - Listar arquivos\n2 - Download arquivo\n3 - Salvar arquivo\n4 - Deletar arquivo\n5 - Sair\n'.encode())
         data = conn.recv(2048).decode()
         print(data)
         if(data == "1"):
-            listarArquivos(conn, addr)
+            lista = listarArquivos(conn, addr)
+            conn.send(str(lista).encode('utf-8'))
+            conn.send("\n".encode()) 
         elif(data == "2"):
-            enviarArquivo(conn, addr)
+            conn.send("Escolha um arquivo para baixar: ".encode())
+            numF = conn.recv(2048).decode() # recebe o nome do arquivo
+            enviarArquivo(conn, addr, numF) # envia o arquivo
+            conn.send("\nArquivo enviado com sucesso!\n".encode())
         elif(data == "3"):
             receberArquivo(conn, addr)
         elif(data == "4"):
