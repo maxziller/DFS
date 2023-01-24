@@ -4,143 +4,106 @@ import hashlib
 import shutil
 import ctypes
 import os
+import threading
 from datetime import datetime
+from assets import *
 
-Files = "Files/"
-Control = "Control/"
-Meta = "Meta/"
-usuarios = "Control/users.txt"
-
-def cria_socket_server():
+def start_server():
     host = socket.gethostname()
     port = 5000
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind((host, port))
     		
-    server_socket.listen(2)
-    print ("Server listening")		
-    c, addr = server_socket.accept()	
-    print ('Got connection from ' + str(addr))
-    c.send('Bem vindo ao servidor caralho!\n'.encode())
-    
+    server_socket.listen(5)
+    print ("Server listening")	
+    conns = set() # armazena as conexões dos clientes
     while True:
+        conn, addr = server_socket.accept()	
+        print ('Conexão aceita, bem vindo ' + str(addr))
+        try:
+            conns.add(conn)
+            thread = threading.Thread(target=execute_server, args = (conn, addr))
+            thread.start()
+        except:
+            print("Erro ao iniciar thread")
+            conn.close()
+            continue
+
+
+def execute_server(conn, addr):
+    while True:
+        conn.send('Bem vindo ao servidor de arquivos!\n'.encode())
+        time.sleep(5)
+        
+        # verifica se o usuário já existe
+        if(login(conn)):
+            menu(conn, addr)
+        else:
+            print("Erro ao fazer login")
+            conn.close()
+            break
+
+def menu(conn, addr):
+    while True:
+        conn.send('1 - Listar arquivos\n'.encode())
+        conn.send('2 - Enviar arquivo\n'.encode())
+        conn.send('3 - Receber arquivo\n'.encode())
+        conn.send('4 - Deletar arquivo\n'.encode())
+        conn.send('5 - Sair\n'.encode())
+        time.sleep(5)
+        data = conn.recv(2048).decode()
+        if(data == "1"):
+            listarArquivos(conn, addr)
+        elif(data == "2"):
+            enviarArquivo(conn, addr)
+        elif(data == "3"):
+            receberArquivo(conn, addr)
+        elif(data == "4"):
+            deletarArquivo(conn, addr)
+        elif(data == "5"):
+            conn.close()
+            break
+        else:
+            conn.send("Opção inválida\n".encode())
+            time.sleep(5)
+
+def login(conn):
+    for i in range(3, 1, -1):
         # get username
-        username = c.recv(2048)
+        username = conn.recv(2048)
         username = username.decode()
        
         # get password 
-        password = c.recv(2048)
+        password = conn.recv(2048)
         password = password.decode()
 
         if (verificausuario(username)):
             if (verificasenha(username,password)):
                 print("Seja bem-vindo, " + username)
-                c.send("Login efetuado com sucesso\n".encode())
+                conn.send("Login efetuado com sucesso\n".encode())
                 print("Login efetuado com sucesso\n")
                 time.sleep(5)
+                return True
                 break
             else:
                 print("Senha incorreta")
-                c.send("Login falhou, encerrando conexão".encode())
+                conn.send(f"Login falhou, você tem mais {i} tentativas!".encode())
                 time.sleep(5)
-                c.close()
-                break
         else:
+            # caso tenha que cadastrar um novo usuario, requisitar senha de administrador
             print("Usuário não cadastrado, inserindo novo usuário")
             insereusuario(username, password)
-            print("Seja bem-vindo, "+ username)
-            c.send("Login efetuado com sucesso\n".encode())
+            
+            conn.send("Login efetuado com sucesso\n".encode())
             print("Login efetuado com sucesso\n")
             time.sleep(5)
-            # tem que listar os arquivos do usuário
-            input("Press any key to exit")
-                        
-
-def Sha512Hash(Password):
-    HashedPassword=hashlib.sha512(Password.encode('utf-8')).hexdigest()
-    return(HashedPassword)
-
-"""
-Função que abre o arquivo com as informações dos usuários e as organiza num dicionário
-No dicionário, o nome do usuário é a chave e o hash da senha é o dado
-O dicionário é retornado
-"""
-def carregausuarios():
-    users = {}
-    try:
-        arquivo = open(usuarios,'r',encoding='utf8')
-        for linha in arquivo:
-            senha = (linha.strip()).split(' ',1)
-            users[senha[0]] = senha[1]
-        
-    except IOError:
-        arquivo = open(usuarios,'x',encoding='utf8')
-    arquivo.close()
-    return users
-
-"""
-Função que retorna uma lista com todos os nomes de usuário
-"""
-def listausuarios():
-    lista = []
-    users = carregausuarios()
-    for user in users:
-        lista.append(user[0])
-    return lista
-
-"""
-Função que verifica se o usuário já está ou não registrado no sistema
-"""
-def verificausuario(user):
-    users = carregausuarios()
-    if user in users.keys():
-        return True
-    else:
-        return False
-
-"""
-Função que insere novo usuário no sistema com sua senha já em hash
-"""
-def insereusuario(usuario,senha):
-    arquivo = open(usuarios,'a',encoding='utf8')
-    arquivo.write(usuario)
-    arquivo.write(" ")
-
-    arquivo.write(Sha512Hash(senha))
-    arquivo.write("\n")
-    arquivo.close()
-
-def inicializa():
-    if not os.path.isdir(Files):
-        os.mkdir('./Files')
-    if not os.path.isdir(Control):
-        os.mkdir('./Control')
-    if not os.path.isdir(Meta):
-        os.mkdir('./Meta')
-        FILE_ATTRIBUTE_HIDDEN = 0x02
-        ret = ctypes.windll.kernel32.SetFileAttributesW(Meta, FILE_ATTRIBUTE_HIDDEN)
-    return 0
-
-"""
-Funçãoque verifica se o hash da senha colocada no input é igual ao hash da senha salvo
-"""
-def verificasenha(user,senha):
-    arquivo = open(usuarios,'r',encoding='utf8')
-    for linha in arquivo:
-        linha = linha.strip()
-        usuario = linha.split(" ",1)
-        if (usuario[0] == user):
-            h = Sha512Hash(senha).strip()
-            if (h == usuario[1]):
-                return True
-            else:
-                return False
+            return True
             break
 
 def main():
-    inicializa()
-    cria_socket_server()
+    inicializa() # cria pastas e arquivos iniciais
+    start_server()
 
-if __name__ == "__main__":
-    main()
+main()

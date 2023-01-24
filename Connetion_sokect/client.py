@@ -1,11 +1,20 @@
 import socket			
 import hashlib
+import time
 def cria_socket_client():
-    host = socket.gethostname()
-    port = 5000
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect((host, port))
-    login(client_socket)
+    for i in range(1, 10):
+        try: 
+            host = socket.gethostname()
+            port = 5000
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client_socket.connect((host, port))
+            print("Conectado com o servidor!")
+            login(client_socket)
+        except:
+            print(f"Erro ao conectar com o servidor, tentando novamente... {i}/10")
+            time.sleep(10)
+            continue
+
 
 def login(client_socket):
     # Recebe mensagem de boas vindas do servidor
