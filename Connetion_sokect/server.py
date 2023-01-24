@@ -8,34 +8,38 @@ import threading
 from datetime import datetime
 from assets import *
 
+class ThreadedServer(object):
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.bind((self.host, self.port))
+
+    def listen(self):
+        self.sock.listen(5)
+        print ("Server listening")	
+        while True:
+            client, address = self.sock.accept()
+            print ('Conexão aceita, bem vindo ' + str(address))
+            client.settimeout(60)
+            threading.Thread(target = execute_server , args = (client,address)).start()
+
+    def listenToClient(self, client, address):
+        return client, address
+
+
 def start_server():
     host = socket.gethostname()
     port = 5000
 
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_socket.bind((host, port))
-    		
-    server_socket.listen(5)
-    print ("Server listening")	
-    conns = set() # armazena as conexões dos clientes
-    while True:
-        conn, addr = server_socket.accept()	
-        print ('Conexão aceita, bem vindo ' + str(addr))
-        try:
-            conns.add(conn)
-            thread = threading.Thread(target=execute_server, args = (conn, addr))
-            thread.start()
-        except:
-            print("Erro ao iniciar thread")
-            conn.close()
-            continue
+    ThreadedServer(host, port).listen()
+
 
 
 def execute_server(conn, addr):
     while True:
         conn.send('Bem vindo ao servidor de arquivos!\n'.encode())
-        time.sleep(5)
         
         # verifica se o usuário já existe
         if(login(conn)):
@@ -47,13 +51,9 @@ def execute_server(conn, addr):
 
 def menu(conn, addr):
     while True:
-        conn.send('1 - Listar arquivos\n'.encode())
-        conn.send('2 - Enviar arquivo\n'.encode())
-        conn.send('3 - Receber arquivo\n'.encode())
-        conn.send('4 - Deletar arquivo\n'.encode())
-        conn.send('5 - Sair\n'.encode())
-        time.sleep(5)
+        conn.send('1 - Listar arquivos\n2 - Enviar arquivo\n3 - Receber arquivo\n4 - Deletar arquivo\n5 - Sair\n'.encode())
         data = conn.recv(2048).decode()
+        print(data)
         if(data == "1"):
             listarArquivos(conn, addr)
         elif(data == "2"):
@@ -63,7 +63,10 @@ def menu(conn, addr):
         elif(data == "4"):
             deletarArquivo(conn, addr)
         elif(data == "5"):
+            print("Saindo...")
+            conn.send("Saindo...\n".encode())
             conn.close()
+            start_server()
             break
         else:
             conn.send("Opção inválida\n".encode())

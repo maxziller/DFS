@@ -106,3 +106,4 @@ def receberArquivo(conn, addr):
 def deletarArquivo(conn, addr):
     conn.send("Deletar arquivo".encode('utf-8'))
 
+

@@ -1,6 +1,11 @@
 import socket			
 import hashlib
 import time
+import os
+
+def cls():
+    os.system('cls' if os.name=='nt' else 'clear')
+
 def cria_socket_client():
     for i in range(1, 10):
         try: 
@@ -21,34 +26,31 @@ def login(client_socket):
     print(client_socket.recv(1024).decode())
     
     # Envia username para o servidor
-    #data = client_socket.recv(1024).decode()
     username = input("Digite seu username:")
     while (" " in username):    
         username = input("Não é permitido o uso de espaços no nome de usuário, digite novamente:")
     client_socket.send(username.encode())
 
     # Envia password para o servidor
-    #data = client_socket.recv(1024).decode()
     password = input("Digite sua senha:")
     password = Sha512Hash(password)
     client_socket.send(password.encode())
 
-
     # Recebe mensagem de login efetuado ou falhou
-    data = client_socket.recv(1024).decode()
+    data = client_socket.recv(2048).decode()
+
     if(data == "Login efetuado com sucesso\n"):
         print(data)
-        print("Agora você pode enviar mensagens para o servidor")
-        print("1 - Listar arquivos")
-        print("2 - Enviar arquivo")
-        print("3 - Receber arquivo")
-        print("4 - Deletar arquivo")
-        print("5 - Sair")
-
+        cls()
+        data = client_socket.recv(2048).decode()
+        print(data)
         while True:
             data = input("Digite a opcao desejada: ")
             client_socket.send(data.encode())
-            if(data == "exit"):
+            if(data == "5"):
+                print("Saindo...")
+                client_socket.send("Saindo...\n".encode())
+                client_socket.close()
                 break
     else:
         print(data)
