@@ -19,6 +19,7 @@ usuarios = "Control/users.txt"
 Inicializa o objeto para manipulação dos meta-dados do arquivo
 Cria listas que serão usadas para controlar as permissões de acesso e os históricos de modificações e acessos
 Chama função que cria arquivo para salvar estes meta-dados
+
 Seus atributos são:
 
 nome - O nome do arquivo
@@ -130,7 +131,7 @@ class File:
     def excluir(self):
         os.remove(self.metaarquivo)
         os.remove(self.caminho)
-        return
+        return True
         
     """
     Função que renomeia o arquivo no sistema
@@ -139,7 +140,7 @@ class File:
         os.rename(self.caminho,Files + novonome)
         os.rename(self.metaarquivo, Meta + novonome)
         self.nome = novonome
-        return
+        return True
         
     """
     Função que adiciona um usuário na lista de permissões
@@ -148,6 +149,15 @@ class File:
         if usuario not in self.listapermissoes:
             self.listapermissoes.append(usuario)
             return self.atualizameta()
+        else:
+            return False
+
+    """
+    Função que verifica se o usuário tem permissão ou não
+    """
+    def tempermissao(self,usuario):
+        if usuario in self.listapermissoes:
+            return True
         else:
             return False
 
@@ -251,7 +261,7 @@ class Servidor:
     No dicionário, o nome do usuário é a chave e o hash da senha é o dado
     O dicionário é retornado
     """
-    def carregausuarios():
+    def carregausuarios(self):
         users = {}
         try:
             arquivo = open(usuarios,'r',encoding='utf8')
@@ -276,18 +286,25 @@ class Servidor:
 
     """
     Função temporária só pra testes - o servidor não precisa de interface
+    Não recebe informações adicionais além do nome do usuário solicitante
     """
     def exibearquivos(self,usuario):
         print("Arquivos disponíveis: \n")
-        for arquivo in self.arquivos:
-            if ( (usuario in arquivo.listaacessos) or (usuario == "System") ):
-                if (arquivo[1] == True):
+        for chave in self.arquivos.keys():
+            arquivo = self.arquivos[chave]
+            if ( (arquivo.tempermissao(usuario)) or (usuario == "admin") ):
+                if (arquivo.ocupado == False):
                     situacao = "Disponível
                 else:
-                    situacao = "Ocupado por " + arquivo[1]
-                print(arquivo[0] + " - " + situacao)
-    
-    def pedeacesso(usuario,arquivo):
+                    situacao = "Ocupado por " + arquivo.ocupado
+                print(chave + " - " + situacao)
+
+    """
+    Cliente tenta acessar um arquivo
+    Função recebe o nome deste arquivo e o nome do usuário. Se o usuário tiver acesso, o acesso é concedido.
+    Recebe o nome do arquivo
+    """
+    def pedeacesso(self, usuario,arquivo):
         if ( (arquivo in self.arquivos.keys()) and (usuario in self.arquivos[arquivo].listapermissoes) and (self.arquivos[arquivo].ocupado == False) ):
             #
             #
@@ -299,8 +316,13 @@ class Servidor:
         else:
             return False
 
-    def fechaarquivo(arquivo):
-        if (arquivo in self.arquivos.keys()):
+    """
+    Cliente quer parar de acessar um arquivo
+    Função recebe o nome deste arquivo e o nome do usuário
+    Recebe o nome do arquivo
+    """
+    def fechaarquivo(self, usuario, arquivo):
+        if ( (arquivo in self.arquivos.keys()) and ( self.arquivos[arquivo].tempermissao(usuario) )):
             self.arquivos[arquivo].ocupado = False
             return True
         else:
@@ -308,14 +330,135 @@ class Servidor:
 
     """
     Função para trazer para a pasta de arquivos do sistema um arquivo através de seu endereço
+    Se já existir arquivo com este nome, o sistema atualiza
+    Se não existir, o arquivo é adicionado
+    Recebe o nome do arquivo a ser colocado no sistema
     """ 
-    def importaarquivo(original):
+    def importaarquivo(self,usuario, original):
         try:
-            arquivo = original[original.rfind("/")+1:]
-            shutil.copyfile(original,Files+arquivo)
-            return True
+            nomearquivo = original[original.rfind("/")+1:]
+            if (nomearquivo in self.arquivos.keys()):
+                return self.arquivos[nomearquivo].atualiza(original,usuario)
+            else:
+                shutil.copyfile(original,Files+arquivo)
+                arquivo = File(nomearquivo,usuario)
+                self.arquivos[nomearquivo] = arquivo
+                return True
         except IOError:
             return False
+        
+
+
+    """
+    Função que deleta um arquivo do sistema
+    Recebe nome do arquivo
+    """
+    def excluiarquivo(self,usuario,arquivo):
+        if (self.arquivos[arquivo].tempermissao(usuario)):
+            return self.arquivos[arquivo].excluir()
+        else:
+            return False
+
+    """
+    Muda o nome de um arquivo no sistema
+    Recebe tupla com (nome atual, novo nome)
+    """
+    def renomeiaarquivo(self,usuario,nomes):
+        nomeatual = nomes[0]
+        nomenovo = nomes[1]
+        if (self.arquivos[nomeatual].tempermissao(usuario)):
+            return self.arquivos[nomeatual].renomear(novonome)
+        else:
+            return False
+
+    """
+    Função que dá nova permissão de acesso a um arquivo
+    O usuário que adiciona deve ter autorização prévia de lidar com o arquivo
+    A entrada é o usuario soliciante e um bloco de informações em formato de tupla
+    A tupla contem ( nome do novo usuário com acesso, nome do arquivo )
+    """
+    def dapermissao(self, usuario,informacoes):
+        novousuario = informacoes[0]
+        arquivo = informacoes[1]
+        if (self.arquivos[arquivo].tempermissao(usuario)):
+            return (self.arquivos[arquivo].darpermissao(novousuario))
+        else:
+            return False
+
+    """
+    Função que recebe a informação de um cliente para retirar o direito de acesso de outro usuário
+    Um usuário só pode retirar acesso de outros em arquivos que ele é dono, ou seja, ele criou
+    A entrada é, além do nome do usuário que solicita, uma tupla
+    A tupla contém (usuário a ser removido, nome do arquivo)
+    """
+    def tirarpermissao(usuario, informacoes):
+        removido = informacoes[0]
+        arquivo = informacoes[1]
+        if (self.arquivos[arquivo].tempermissao(usuario)):
+            return (self.arquivos[arquivo].tirarpermissao(removido))
+        else:
+            return False
+
+
+    def mostraacessos(usuario,arquivo):
+        if (self.arquivos[arquivo].tempermissao(usuario)):
+            return (self.arquivos[arquivo].mostraacessos())
+        else:
+            return False
+
+    def mostrapermissoes(usuario,arquivo):
+        if (self.arquivos[arquivo].tempermissao(usuario)):
+            return (self.arquivos[arquivo].listapermissoes)
+        else:
+            return False
+
+    def mostramodificacoes(usuario,arquivo):
+        if (self.arquivos[arquivo].tempermissao(usuario)):
+            return (self.arquivos[arquivo].listamodificacao)
+        else:
+            return False
+        
+    """
+    Função que recebe uma tupla (X , Y, Z) com ação do menu
+    X é um número relativo à ação do cliente
+    Y é a identificação do cliente que solicitou
+    Z é a informação necessária para ação, podendo inclusive ser um objeto mais complexo ou valor None
+    """
+    def acaomenu(self, informacao): 
+        acao = informacao[2]
+        cliente = informacao[1]
+        menu = informacao[0]
+        if (menu == 0):
+            #Exibir todos os arquivos que o usuário pode ver
+            return self.exibearquivos(cliente)
+        elif (menu == 1):
+            #Cliente pediu pra acessar um documento
+            return self.pedeacesso(cliente,acao)
+        elif (menu == 2):
+            #Deixar de acessar um arquivo sem salvar uma atualização
+            return self.fechaarquivo(cliente,acao)
+        elif (menu == 3):
+            #Cliente quer adicionar um arquivo ao sistema ou atualizar um já existente
+            return self.importaarquivo(cliente,acao)
+        elif (menu == 4):
+            #Exclui arquivo do sistema
+            return self.excluiarquivo(cliente,acao)
+        elif (menu == 5):
+            #Renomeia um arquivo existente
+            return self.renomeiaarquivo(cliente,acao)
+        elif (menu == 6):
+            #Dá permissão a um novo usuário poder lidar com arquivo
+            return dapermissao(cliente,acao)
+        elif (menu == 7):
+            return retirarpermissao(cliente,acao)
+        elif (menu == 8):
+            return mostraacessos(cliente,acao)
+        elif (menu == 9):
+            return mostrapermissoes(cliente,acao)
+        elif (menu == 10):
+            return mostramodificacoes(cliente,acao)
+
+
 
 
     
