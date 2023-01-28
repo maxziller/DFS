@@ -3,17 +3,44 @@ Servidor local - ainda sem conexão
 Necessidades: Controle de nomes e metadados
 
 """
+import socket			
+import time
 import hashlib
 import shutil
 import ctypes
 import os
 import filecmp
 import datetime
+import threading
+#import assets
 
 Files = "Files/"
 Control = "Control/"
 Meta = "Meta/"
 usuarios = "Control/users.txt"
+
+
+class ThreadedServer(object):
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.bind((self.host, self.port))
+
+    def listen(self):
+        self.sock.listen(5)
+        print ("Server listening")	
+        while True:
+            client, address = self.sock.accept()
+            print ('Conexão aceita, bem vindo ' + str(address))
+            client.settimeout(60)
+            threading.Thread(target = execute_server , args = (client,address)).start()
+
+    #Função nunca é chamada em lugar nenhum
+    def listenToClient(self, client, address):
+        return client, address
+
 
 """
 Inicializa o objeto para manipulação dos meta-dados do arquivo
@@ -32,12 +59,17 @@ listaacessos - Lista de tuplas, cada tupla contém o usuário e o datetime do ac
 listapermissões - Lista de nomes de usuário que têm permissão para acessar o arquivo
 ocupado - Colocado como False quando ninguém está acessando o arquivo ou com o nome do usuário que acessa como forma de hardlock
 """
+
+
 class File:
     def __init__(self,nome,usuario):
         self.nome = nome
         self.caminho = Files + self.nome
-        self.tamanho = self.atualizatamanho()
-        self.usuariocriacao = usuario
+        if (os.path.isfile(self.caminho)):
+            self.tamanho = self.atualizatamanho()
+        else:
+            open(self.caminho,'x')
+            self.usuariocriacao = usuario
         self.metaarquivo = self.achameta()
         self.ocupado = False
 
@@ -207,7 +239,7 @@ class File:
         return True
 
     def lemeta(arquivo):
-        int i
+        i = 1
         for linha in arquivo:
             if (i == 1):
                 horario = linha.lstrip("Criação: ")
@@ -247,32 +279,18 @@ class File:
 
 
 class Servidor:
-    def __init__(self):
+    def __init__(self,conn, addr, usuario):
+        self.conn = conn
+        self.addr = addr
         self.usuarios = self.listausuarios()
+        self.username = usuario
         self.arquivos = {}
         self.pasta = os.listdir(Files)
-        for arquivo in pasta:
-            novo = File(arquivo,"System")
+        for arquivo in self.pasta:
+            novo = File(arquivo,usuario)
             self.arquivos[arquivo] = novo
-        self.exibearquivos("System")
+        self.exibearquivos()
 
-    """
-    Função que abre o arquivo com as informações dos usuários e as organiza num dicionário
-    No dicionário, o nome do usuário é a chave e o hash da senha é o dado
-    O dicionário é retornado
-    """
-    def carregausuarios(self):
-        users = {}
-        try:
-            arquivo = open(usuarios,'r',encoding='utf8')
-            for linha in arquivo:
-                senha = (linha.strip()).split(' ',1)
-                users[senha[0]] = senha[1]
-        
-        except IOError:
-            arquivo = open(usuarios,'x',encoding='utf8')
-        arquivo.close()
-        return users
 
     """
     Função que retorna uma lista com todos os nomes de usuário
@@ -288,16 +306,25 @@ class Servidor:
     Função temporária só pra testes - o servidor não precisa de interface
     Não recebe informações adicionais além do nome do usuário solicitante
     """
-    def exibearquivos(self,usuario):
-        print("Arquivos disponíveis: \n")
-        for chave in self.arquivos.keys():
-            arquivo = self.arquivos[chave]
-            if ( (arquivo.tempermissao(usuario)) or (usuario == "admin") ):
-                if (arquivo.ocupado == False):
-                    situacao = "Disponível
-                else:
-                    situacao = "Ocupado por " + arquivo.ocupado
-                print(chave + " - " + situacao)
+    def exibearquivos(self):
+        try:
+            i = 0
+            self.conn.send(("Arquivos disponíveis: \n").encode())
+            for chave in self.arquivos.keys():
+                arquivo = self.arquivos[chave]
+                if ( (arquivo.tempermissao(self.username)) or (self.username == "admin") ):
+                    if (arquivo.ocupado == False):
+                        situacao = "Disponível"
+                        i += 1
+                    else:
+                        situacao = "Ocupado por " + arquivo.ocupado
+                    self.conn.send((chave + " - " + situacao).encode())
+            self.conn.send( ("Você tem "+ str(i) + " arquivos disponíveis\n").encode())
+            self.conn.send("Acabou".encode())
+            return True
+        except IOError:
+            return False
+            
 
     """
     Cliente tenta acessar um arquivo
@@ -321,7 +348,7 @@ class Servidor:
     Função recebe o nome deste arquivo e o nome do usuário
     Recebe o nome do arquivo
     """
-    def fechaarquivo(self, usuario, arquivo):
+    def fechaarquivo(self, arquivo):
         if ( (arquivo in self.arquivos.keys()) and ( self.arquivos[arquivo].tempermissao(usuario) )):
             self.arquivos[arquivo].ocupado = False
             return True
@@ -424,45 +451,100 @@ class Servidor:
     Y é a identificação do cliente que solicitou
     Z é a informação necessária para ação, podendo inclusive ser um objeto mais complexo ou valor None
     """
-    def acaomenu(self, informacao): 
-        acao = informacao[2]
-        cliente = informacao[1]
-        menu = informacao[0]
-        if (menu == 0):
+    def opcaomenu(self, opcao, objeto): 
+        if (opcao == 0):
             #Exibir todos os arquivos que o usuário pode ver
-            return self.exibearquivos(cliente)
-        elif (menu == 1):
+            resp = self.exibearquivos()
+            print(self.username + " exibiu com sucesso todos os arquivos que tem acesso")
+        elif (opcao == 1):
             #Cliente pediu pra acessar um documento
-            return self.pedeacesso(cliente,acao)
-        elif (menu == 2):
+            return self.pedeacesso(objeto)
+        elif (opcao == 2):
             #Deixar de acessar um arquivo sem salvar uma atualização
-            return self.fechaarquivo(cliente,acao)
-        elif (menu == 3):
-            #Cliente quer adicionar um arquivo ao sistema ou atualizar um já existente
-            return self.importaarquivo(cliente,acao)
-        elif (menu == 4):
+            return self.fechaarquivo(objeto)
+        elif (opcao == 3):
             #Exclui arquivo do sistema
-            return self.excluiarquivo(cliente,acao)
-        elif (menu == 5):
+            return self.excluiarquivo(cliente,objeto)
+        elif (opcao == 4):
             #Renomeia um arquivo existente
-            return self.renomeiaarquivo(cliente,acao)
-        elif (menu == 6):
+            return self.renomeiaarquivo(cliente,objeto)
+        elif (opcao == 5):
+            #Adiciona ou atualiza um arquivo
+            return self.importaarquivo(cliente,objeto)
+        elif (opcao == 6):
             #Dá permissão a um novo usuário poder lidar com arquivo
-            return dapermissao(cliente,acao)
-        elif (menu == 7):
-            return retirarpermissao(cliente,acao)
-        elif (menu == 8):
-            return mostraacessos(cliente,acao)
-        elif (menu == 9):
-            return mostrapermissoes(cliente,acao)
-        elif (menu == 10):
-            return mostramodificacoes(cliente,acao)
+            return dapermissao(cliente,objeto)
+        elif (opcao == 7):
+            return retirarpermissao(cliente,objeto)
+        elif (opcao == 8):
+            return mostraacessos(cliente,objeto)
+        elif (opcao == 9):
+            return mostrapermissoes(cliente,objeto)
+        elif (opcao == 10):
+            return mostramodificacoes(cliente,objeto)
 
+    def menu(self):
+        #PRECISA DE PARAR DE RODAR PRA ESPERAR A RESPOSTA
+        print("entra no menu")
+        opcao = self.conn.recv(2048).decode()
+        print(opcao)
+        if (opcao.endswith("10")):
+            opcao = 10
+        elif (opcao.endswith("11")):
+            opcao = 11
+        elif (opcao.endswith("9")):
+            opcao = 9
+        elif (opcao.endswith("8")):
+            opcao = 8
+        elif (opcao.endswith("7")):
+            opcao = 7
+        elif (opcao.endswith("6")):
+            opcao = 6
+        elif (opcao.endswith("5")):
+            opcao = 5
+        elif (opcao.endswith("4")):
+            opcao = 4
+        elif (opcao.endswith("3")):
+            opcao = 3
+        elif (opcao.endswith("2")):
+            opcao = 2
+        elif (opcao.endswith("1")):
+            opcao = 1
+        elif (opcao.endswith("0")):
+            opcao = 0
 
-
-
-    
-    
+        print(self.username + " solicitou a seguinte opção do menu: ")    
+        print(opcao)
+        print("\n")
+        
+        if (opcao == 10):
+            for arquivo in self.arquivos.keys():
+                if arquivo.ocupado == self.username:
+                    self.fechaarquivo(arquivo)
+            self.conn.send("OK".encode())
+            self.conn.close()
+        elif (opcao == 0):
+            self.opcaomenu(0,None)
+        elif (opcao == 1):
+            self.exibearquivos()
+            arquivo = self.conn.recv(4096).decode()
+            #
+            #
+            #Necessário completar quando tivermos arquivos na pasta
+            #
+            #
+        elif (opcao == 5):
+            nome = self.conn.recv(2056).decode()
+            #novoarquivo = File(nome,self.username)
+            arq = open(Files + nome,'x')
+            while True:
+                recvfile = self.conn.recv(4096)
+                if not recvfile: break
+                arq.write(recvfile)
+            arq.close()
+            print("Arquivo "+nome+" foi recebido de "+self.username)
+            
+            
 
 
 """
@@ -508,6 +590,24 @@ def insereusuario(usuario,senha):
     arquivo.close()
 
 """
+Função que abre o arquivo com as informações dos usuários e as organiza num dicionário
+No dicionário, o nome do usuário é a chave e o hash da senha é o dado
+O dicionário é retornado
+"""
+def carregausuarios():
+    users = {}
+    try:
+        arquivo = open(usuarios,'r',encoding='utf8')
+        for linha in arquivo:
+            senha = (linha.strip()).split(' ',1)
+            users[senha[0]] = senha[1]
+       
+    except IOError:
+        arquivo = open(usuarios,'x',encoding='utf8')
+    arquivo.close()
+    return users
+
+"""
 Funçãoque verifica se o hash da senha colocada no input é igual ao hash da senha salvo
 """
 def verificasenha(user,senha):
@@ -519,30 +619,35 @@ def verificasenha(user,senha):
         return False
 
 """
-A maior parte dessa função será transferida para o .py Usuário posteriormente, pois o Servidor não precisa de interface
-Mas por enquanto é o que tá tendo
-Depois rearranja
+A função retorna o nome do usuário se o login foi efetuado com sucesso
+A função retorna False se o login não foi efetuado
 """
-def login():
-    while(1):
-        user = input("Usuário: ")
-        if (" " in user):
-            print("Não é permitido o uso de espaços no nome de usuário")
-        else:
-    
-            if (verificausuario(user)):
-                senha = input("Senha: ")
-                if (verificasenha(user,senha)):
-                    print("Seja bem-vindo, "+user)
-                    break
-                else:
-                    print("Senha incorreta")
+def login(conn):
+    for i in range(3, 1, -1):
+        #Receber o nome do usuário
+        username = conn.recv(2048)
+        username = username.decode()
+
+        #Receber a senha
+        password = conn.recv(2048)
+        password = password.decode()
+
+        if (verificausuario(username)):
+            if (verificasenha(username,password)):
+                print("Login de "+username+" efetuado com sucesso\n")
+                conn.send("Login efetuado com sucesso\n".encode())
+                return username
             else:
-                senha = input("Crie sua senha para o novo usuário: ")
-                insereusuario(user,senha)
-                print("Seja bem-vindo, "+user)
-                break
-    return user
+                print("Tentativa falha de login de "+username)
+                conn.send(f"Login falhou, você tem mais {i} tentativas.".encode())
+        else:
+            #Caso o usuário seja novo e precise se cadastrar, requisitar senha de administrador
+            insereusuario(username,password)
+            conn.send(("Cadastro efetuado com sucesso. Seja bem-vindo, "+username+ "\n").encode())
+            print("Cadastro efetuado do novo usuário "+username+ "\n")
+            return username
+            break
+    return False
 
 """
 Função que faz o hash de forma determinística e estável, podendo ser comparado com vezes posteriores
@@ -552,12 +657,27 @@ def Sha512Hash(Password):
     return(HashedPassword)
 
 
+def start_server():
+    host = socket.gethostname()
+    port = 5000
 
-print("Doodle Grive\n")
+    ThreadedServer(host, port).listen()
+
+def execute_server(conn, addr):
+    conn.send('Bem vindo ao servidor de arquivos!\n'.encode())
+    # verifica se o usuário já existe
+    entrada = login(conn)
+    if(entrada != False):
+        server = Servidor(conn, addr, entrada)
+    else:
+        conn.send("Erro ao fazer login")
+        conn.close()
+    while (True):
+        server.menu()
+        
+
 inicializa()
-print("Faça seu login\n")
-user = login()
-    print("Menu")
+start_server()
 
 
 f = input("Caminho até o arquivo a ser copiado\n")
