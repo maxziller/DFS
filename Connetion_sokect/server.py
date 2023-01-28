@@ -22,7 +22,7 @@ class ThreadedServer(object):
         while True:
             client, address = self.sock.accept()
             print ('Conexão aceita, bem vindo ' + str(address))
-            client.settimeout(60)
+            client.settimeout(600)
             threading.Thread(target = execute_server , args = (client,address)).start()
 
     def listenToClient(self, client, address):
@@ -91,10 +91,7 @@ def login(conn):
             if (verificasenha(username,password)):
                 print("Seja bem-vindo, " + username)
                 conn.send("Login efetuado com sucesso\n".encode())
-                print("Login efetuado com sucesso\n")
-                time.sleep(5)
                 return True
-                break
             else:
                 print("Senha incorreta")
                 conn.send(f"Login falhou, você tem mais {i} tentativas!".encode())
